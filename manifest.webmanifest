@@ -1,0 +1,17 @@
+{
+  "name": "PitchGun — Softball Pitch Speed",
+  "short_name": "PitchGun",
+  "description": "Point-and-shoot softball pitch speed. Reads speed live or from a recorded/slow-mo clip using time-of-flight over the pitching distance.",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0b1628",
+  "theme_color": "#0b1628",
+  "categories": ["sports", "utilities"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

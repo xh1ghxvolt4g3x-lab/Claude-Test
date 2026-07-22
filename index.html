@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no" />
+  <meta name="theme-color" content="#0b1628" />
+  <title>PitchGun — Softball Pitch Speed</title>
+  <link rel="manifest" href="manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="PitchGun" />
+  <meta name="mobile-web-app-capable" content="yes" />
+  <link rel="stylesheet" href="css/styles.css" />
+</head>
+<body>
+  <!-- ===================== CAMERA VIEW ===================== -->
+  <main id="cameraView" class="view">
+    <video id="camera" playsinline autoplay muted></video>
+
+    <!-- framing guide -->
+    <div id="framingGuide" class="framing-guide" aria-hidden="true">
+      <span class="fg-label fg-left">PITCHER</span>
+      <span class="fg-line"></span>
+      <span class="fg-label fg-right">CATCHER</span>
+      <span class="fg-hint">Frame the whole pitch — pitcher one side, catcher the other</span>
+    </div>
+
+    <!-- top bar -->
+    <header class="topbar">
+      <label class="age-select">
+        <span class="age-caption">Age</span>
+        <select id="ageSelect" aria-label="Age group / pitching distance"></select>
+      </label>
+      <div class="top-right">
+        <span id="capBadge" class="badge">starting…</span>
+        <button id="settingsBtn" class="icon-btn" aria-label="Settings">⚙</button>
+        <button id="infoBtn" class="icon-btn" aria-label="Help">?</button>
+      </div>
+    </header>
+
+    <!-- live speed read-out -->
+    <div id="liveReadout" class="live-readout hidden">
+      <div class="lr-speed"><span id="lrValue">0.0</span><span class="lr-unit">mph</span></div>
+      <div id="lrSub" class="lr-sub"></div>
+    </div>
+
+    <!-- status line -->
+    <div id="statusLine" class="status-line">Point at the pitching lane…</div>
+
+    <!-- bottom controls -->
+    <footer class="controls">
+      <div class="mode-toggle" role="tablist" aria-label="Capture mode">
+        <button id="modeLive" class="mode-btn active" role="tab">Live</button>
+        <button id="modeRecord" class="mode-btn" role="tab">Record</button>
+      </div>
+      <div class="controls-row">
+        <button id="importBtn" class="side-btn">Import</button>
+        <button id="shutter" class="shutter" aria-label="Record">
+          <span class="shutter-inner"></span>
+        </button>
+        <button id="lastBtn" class="side-btn" disabled>Last</button>
+      </div>
+      <input id="fileInput" type="file" accept="video/*" capture="environment" hidden />
+    </footer>
+  </main>
+
+  <!-- ===================== LIVE RESULT CARD ===================== -->
+  <div id="liveCard" class="overlay hidden">
+    <div class="card">
+      <canvas id="liveSnap" class="snap-canvas"></canvas>
+      <div class="card-actions">
+        <button id="liveSave" class="btn primary">Save Photo</button>
+        <button id="liveDismiss" class="btn ghost">Dismiss</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===================== ANALYZER VIEW ===================== -->
+  <div id="analyzer" class="overlay hidden">
+    <div class="analyzer-inner">
+      <div class="analyzer-stage">
+        <video id="clip" playsinline muted></video>
+        <canvas id="overlayCanvas" class="overlay-canvas"></canvas>
+        <div id="analyzeSpeed" class="analyze-speed hidden">
+          <span id="asValue">–</span><span class="lr-unit">mph</span>
+        </div>
+      </div>
+
+      <div class="scrubber">
+        <input id="scrub" type="range" min="0" max="1000" value="0" step="1" />
+        <div class="marks">
+          <span id="markRelease" class="mark release">Release</span>
+          <span id="markCatch" class="mark catch">Catch</span>
+        </div>
+      </div>
+
+      <div class="frame-controls">
+        <button id="stepBack" class="chip">‹ frame</button>
+        <button id="setRelease" class="chip strong">Set Release</button>
+        <button id="setCatch" class="chip strong">Set Catch</button>
+        <button id="stepFwd" class="chip">frame ›</button>
+      </div>
+
+      <div class="analyzer-actions">
+        <button id="autoDetect" class="btn">Auto-detect</button>
+        <button id="savePhoto" class="btn primary">Save Photo</button>
+        <button id="saveClip" class="btn">Save Clip</button>
+        <button id="closeAnalyzer" class="btn ghost">Close</button>
+      </div>
+      <div id="analyzerNote" class="analyzer-note"></div>
+    </div>
+  </div>
+
+  <!-- ===================== SETTINGS SHEET ===================== -->
+  <div id="settingsSheet" class="sheet hidden">
+    <div class="sheet-inner">
+      <h2>Settings</h2>
+      <label class="row">
+        <span>Radar-style speed<br /><small>Estimate release speed (adds ~5% for drag)</small></span>
+        <input id="radarToggle" type="checkbox" />
+      </label>
+      <label class="row">
+        <span>Show framing guide</span>
+        <input id="guideToggle" type="checkbox" checked />
+      </label>
+      <label class="row">
+        <span>Detection sensitivity<br /><small>Higher = catch fainter/faster balls</small></span>
+        <input id="sensitivity" type="range" min="14" max="40" value="26" />
+      </label>
+      <div id="camDetail" class="cam-detail"></div>
+      <button id="closeSettings" class="btn primary full">Done</button>
+    </div>
+  </div>
+
+  <!-- ===================== HELP SHEET ===================== -->
+  <div id="helpSheet" class="sheet hidden">
+    <div class="sheet-inner">
+      <h2>How to get an accurate reading</h2>
+      <ol class="help">
+        <li><b>Stand to the side</b> of the pitching lane, roughly level with the midpoint, 15–25 ft back.</li>
+        <li><b>Frame the whole flight</b> — pitcher near one edge, catcher near the other. The full pitching distance must be in view.</li>
+        <li>Pick the <b>age group</b> up top so the app knows the distance (10U 35 ft · 12U 40 ft · 14U+ 43 ft).</li>
+        <li><b>Live</b> reads speed automatically as pitches happen. <b>Record</b> captures a clip you can scrub frame-by-frame for a precise number.</li>
+        <li>For the sharpest timing, record a <b>slow-motion clip in the iPhone Camera app</b>, then <b>Import</b> it here and set the exact release/catch frames.</li>
+      </ol>
+      <p class="fine">Speed = pitching distance ÷ flight time. The reading is the average speed over the flight; turn on “Radar-style” in Settings to estimate the higher out-of-hand speed a radar gun shows.</p>
+      <button id="closeHelp" class="btn primary full">Got it</button>
+    </div>
+  </div>
+
+  <!-- permission / error toast -->
+  <div id="toast" class="toast hidden"></div>
+
+  <script type="module" src="js/app.js"></script>
+</body>
+</html>
