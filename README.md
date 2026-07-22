@@ -48,14 +48,16 @@ it locks onto the ball rather than the pitcher's body.
 
 ## Setup on your iPhone
 
-The camera only works over **HTTPS** (or `localhost`). The easiest host is
-**GitHub Pages**:
+The camera only works over **HTTPS** (or `localhost`). This repo **auto‑deploys
+to GitHub Pages** — a workflow (`.github/workflows/deploy-pages.yml`) publishes
+the app every time `main` changes. One‑time setup:
 
-1. Push this repo to GitHub (branch `claude/softball-pitch-speed-app-xg4lmv`,
-   or merge to your default branch).
-2. In the repo: **Settings ▸ Pages ▸ Build and deployment**, set **Source =
-   Deploy from a branch**, pick the branch and `/ (root)`, Save.
-3. Open the published `https://…github.io/…/` URL in **Safari** on the iPhone.
+1. In the repo on GitHub: **Settings ▸ Pages ▸ Build and deployment**, set
+   **Source = GitHub Actions**. (You only do this once.)
+2. Merge the app to `main` (the pull request does this). The **Actions** tab
+   will show a "Deploy to GitHub Pages" run; when it finishes it prints the live
+   `https://…github.io/…/` URL.
+3. Open that URL in **Safari** on the iPhone.
 4. Tap **Share ▸ Add to Home Screen**. Launch it from the home‑screen icon so it
    runs full‑screen and is ready to record.
 5. Allow the camera when prompted (Settings ▸ Safari ▸ Camera if you miss it).
