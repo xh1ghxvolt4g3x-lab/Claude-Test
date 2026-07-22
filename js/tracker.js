@@ -74,6 +74,7 @@ export class BallTracker {
     const candidate = new Uint8Array(n);
     const prev = this.prevGray;
 
+    let candCount = 0;
     if (prev) {
       for (let i = 0; i < n; i++) {
         const j = i * 4;
@@ -82,6 +83,7 @@ export class BallTracker {
         gray[i] = y;
         if (Math.abs(y - prev[i]) > this.motionThresh && isSoftballColor(r, g, b)) {
           candidate[i] = 1;
+          candCount++;
         }
       }
     } else {
@@ -92,7 +94,12 @@ export class BallTracker {
     }
     this.prevGray = gray;
 
-    const detection = prev ? this._pickBall(candidate, px, w, h) : null;
+    // Handheld guard: a big camera jerk lights up softball-coloured motion all
+    // over the frame. When too much of the frame is "moving ball colour" the
+    // ball can't be isolated this frame, so treat it as a miss rather than
+    // locking onto shake. A real ball is only a few px — far below this cap.
+    const globalShake = candCount > n * 0.12;
+    const detection = prev && !globalShake ? this._pickBall(candidate, px, w, h) : null;
     this.lastDetection = detection;
     if (detection) {
       this.history.push({ t: timeSec, x: detection.x, y: detection.y, area: detection.area, color: detection.color });
