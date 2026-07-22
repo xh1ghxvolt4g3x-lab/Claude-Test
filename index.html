@@ -61,7 +61,9 @@
         </button>
         <button id="lastBtn" class="side-btn" disabled>Last</button>
       </div>
-      <input id="fileInput" type="file" accept="video/*" capture="environment" hidden />
+      <!-- no `capture` attribute: on iOS this lets the user pick an existing
+           video from Photos/Files instead of forcing the camera open -->
+      <input id="fileInput" type="file" accept="video/*" hidden />
     </footer>
   </main>
 
