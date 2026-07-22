@@ -1,0 +1,4 @@
+# scratch/test artifacts
+scratch_*
+*.webm
+/tmp/
