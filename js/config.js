@@ -39,16 +39,19 @@ export function distanceForAge(ageId) {
 }
 
 // Core physics: distance (ft) and flight time (s) -> speed report.
-export function speedFromFlight(distanceFt, flightSeconds, radarStyle) {
+// `calibration` is a user-set multiplier (default 1) to match a known radar gun.
+export function speedFromFlight(distanceFt, flightSeconds, radarStyle, calibration = 1) {
   if (!flightSeconds || flightSeconds <= 0) return null;
   const fps = distanceFt / flightSeconds;
   let mph = fps * FPS_TO_MPH;
   if (radarStyle) mph *= RELEASE_SPEED_FACTOR;
+  mph *= (calibration || 1);
   return {
     mph,
     fps,
     flightSeconds,
     distanceFt,
     radarStyle: !!radarStyle,
+    calibration: calibration || 1,
   };
 }

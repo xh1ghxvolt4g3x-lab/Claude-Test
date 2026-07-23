@@ -48,6 +48,12 @@ body { user-select: none; -webkit-user-select: none; }
 }
 .light-badge.low { background: #6d2a1b; border-color: var(--danger); }
 .light-badge.warn { background: #6d5a1b; border-color: #d8b23a; }
+/* coach mode: even bigger, persistent readout */
+.live-readout.coach #lrValue { font-size: 30vw; }
+.live-readout.coach .lr-sub { font-size: 18px; color: #fff; }
+.calib-controls { display: flex; gap: 8px; align-items: center; padding: 4px 0 12px; }
+.calib-controls input { width: 80px; background: #ffffff14; border: 1px solid #ffffff22; color: var(--ink); border-radius: 10px; padding: 9px 10px; font-size: 15px; }
+.calib-controls .chip { flex: 0 0 auto; }
 .icon-btn {
   width: 38px; height: 38px; border-radius: 50%;
   background: #111e33cc; border: 1px solid #ffffff22; color: var(--ink);
