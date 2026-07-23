@@ -5,7 +5,7 @@ import { Store } from './store.js';
 const $ = (id) => document.getElementById(id);
 const PREFS = 'pitchgun.prefs';
 // Bump on each release so users can confirm (Settings) they're on the latest.
-const APP_VERSION = '2.6 — Auto-clip pitches (2026-07-23)';
+const APP_VERSION = '2.7 — New app icon (2026-07-23)';
 
 const state = {
   mode: 'record',

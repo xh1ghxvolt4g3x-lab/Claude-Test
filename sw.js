@@ -5,7 +5,7 @@
 // the phone as soon as it's online (the old cache-first approach could pin an
 // out-of-date copy forever). Images use cache-first (they rarely change). Bump
 // CACHE whenever the shell list changes.
-const CACHE = 'pitchgun-v8';
+const CACHE = 'pitchgun-v9';
 const SHELL = [
   './',
   './index.html',
