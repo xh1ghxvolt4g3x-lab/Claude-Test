@@ -4,7 +4,7 @@ import { BallTracker, LivePitchDetector } from './tracker.js';
 const $ = (id) => document.getElementById(id);
 const PREFS = 'pitchgun.prefs';
 // Bump on each release so users can confirm (Settings) they're on the latest.
-const APP_VERSION = '2.3 — Lighting meter (2026-07-23)';
+const APP_VERSION = '2.4 — Coach mode + calibration (2026-07-23)';
 
 const state = {
   mode: 'record',
@@ -12,6 +12,9 @@ const state = {
   radarStyle: false,
   sensitivity: 26,
   showGuide: true,
+  coachMode: false,
+  calibration: 1,
+  recent: [],          // recent live speeds (mph) for coach display
   stream: null,
   trackW: 1280,
   trackH: 720,
@@ -38,6 +41,8 @@ function loadPrefs() {
       radarStyle: !!p.radarStyle,
       sensitivity: p.sensitivity ?? 26,
       showGuide: p.showGuide ?? true,
+      coachMode: !!p.coachMode,
+      calibration: p.calibration ?? 1,
     });
   } catch { /* ignore */ }
 }
@@ -45,6 +50,7 @@ function savePrefs() {
   localStorage.setItem(PREFS, JSON.stringify({
     ageId: state.ageId, radarStyle: state.radarStyle,
     sensitivity: state.sensitivity, showGuide: state.showGuide,
+    coachMode: state.coachMode, calibration: state.calibration,
   }));
 }
 
@@ -172,23 +178,40 @@ function sampleLighting(cam, ts) {
 
 function onLivePitch(flight) {
   const dist = distanceForAge(state.ageId);
-  const speed = speedFromFlight(dist, flight.flightSeconds, state.radarStyle);
+  const speed = speedFromFlight(dist, flight.flightSeconds, state.radarStyle, state.calibration);
   if (!speed || speed.mph < 12 || speed.mph > 110) return; // reject implausible
   state.lastSpeed = speed;
+  state.recent.unshift(Math.round(speed.mph));
+  state.recent = state.recent.slice(0, 5);
   showLiveNumber(speed);
+  if (state.coachMode) speakSpeed(speed.mph);
   freezeLiveSnapshot(speed);
   $('lastBtn').disabled = false;
+}
+
+function speakSpeed(mph) {
+  try {
+    if (!('speechSynthesis' in window)) return;
+    speechSynthesis.cancel();
+    const u = new SpeechSynthesisUtterance(String(Math.round(mph)));
+    u.rate = 1; u.volume = 1;
+    speechSynthesis.speak(u);
+  } catch { /* speech not available */ }
 }
 
 function showLiveNumber(speed) {
   const lr = $('liveReadout');
   $('lrValue').textContent = speed.mph.toFixed(1);
-  $('lrSub').textContent = `${state.ageId} · ${speed.distanceFt} ft · flight ${(speed.flightSeconds * 1000).toFixed(0)} ms`;
+  const base = `${state.ageId} · ${speed.distanceFt} ft · flight ${(speed.flightSeconds * 1000).toFixed(0)} ms`;
+  const recentStr = state.recent.length > 1 ? `Recent: ${state.recent.join(' · ')}` : '';
+  $('lrSub').innerHTML = state.coachMode && recentStr ? recentStr : base;
   lr.classList.remove('hidden');
   lr.classList.remove('flash'); void lr.offsetWidth; lr.classList.add('flash');
+  lr.classList.toggle('coach', state.coachMode);
   $('statusLine').textContent = state.radarStyle ? 'Radar-style (release) estimate' : 'Average flight speed';
   clearTimeout(showLiveNumber._t);
-  showLiveNumber._t = setTimeout(() => lr.classList.add('hidden'), 4000);
+  // In coach mode the number stays up until the next pitch; otherwise auto-hide.
+  if (!state.coachMode) showLiveNumber._t = setTimeout(() => lr.classList.add('hidden'), 4000);
 }
 
 // snapshot current camera frame + speed tag into the live card canvas
@@ -392,7 +415,7 @@ function recomputeAnalyzer() {
   if (state.catch != null) placeMark('markCatch', state.catch / dur);
   if (state.release != null && state.catch != null && state.catch > state.release) {
     const dist = distanceForAge(state.ageId);
-    const speed = speedFromFlight(dist, state.catch - state.release, state.radarStyle);
+    const speed = speedFromFlight(dist, state.catch - state.release, state.radarStyle, state.calibration);
     state.analyzerSpeed = speed;
     $('asValue').textContent = speed.mph.toFixed(1);
     $('analyzeSpeed').classList.remove('hidden');
@@ -532,7 +555,7 @@ function wire() {
       else startRecording();
     } else {
       // live: grab current frame; tag with last speed if fresh
-      const speed = state.lastSpeed || speedFromFlight(distanceForAge(state.ageId), 0.5, state.radarStyle);
+      const speed = state.lastSpeed || speedFromFlight(distanceForAge(state.ageId), 0.5, state.radarStyle, state.calibration);
       freezeLiveSnapshot(state.lastSpeed || { ...speed, mph: 0 });
       if (!state.lastSpeed) toast('No pitch measured yet — photo saved without a tag.');
     }
@@ -571,7 +594,7 @@ function wire() {
   $('closeAnalyzer').addEventListener('click', closeAnalyzer);
 
   // sheets
-  $('settingsBtn').addEventListener('click', () => $('settingsSheet').classList.remove('hidden'));
+  $('settingsBtn').addEventListener('click', () => { updateCalibStatus(); $('settingsSheet').classList.remove('hidden'); });
   $('closeSettings').addEventListener('click', () => $('settingsSheet').classList.add('hidden'));
   $('infoBtn').addEventListener('click', () => $('helpSheet').classList.remove('hidden'));
   $('closeHelp').addEventListener('click', () => $('helpSheet').classList.add('hidden'));
@@ -582,6 +605,38 @@ function wire() {
   guide.addEventListener('change', (e) => { state.showGuide = e.target.checked; savePrefs(); $('framingGuide').classList.toggle('hidden', !state.showGuide); });
   const sens = $('sensitivity'); sens.value = state.sensitivity;
   sens.addEventListener('input', (e) => { state.sensitivity = +e.target.value; savePrefs(); if (state.live) state.live.tracker.motionThresh = state.sensitivity; });
+
+  const coach = $('coachToggle'); coach.checked = state.coachMode;
+  coach.addEventListener('change', (e) => {
+    state.coachMode = e.target.checked; savePrefs();
+    if (!state.coachMode) $('liveReadout').classList.remove('coach');
+  });
+
+  $('calibApply').addEventListener('click', () => {
+    const appV = parseFloat($('calibApp').value);
+    const radarV = parseFloat($('calibRadar').value);
+    if (!(appV > 0) || !(radarV > 0)) { toast('Enter both numbers first.'); return; }
+    let factor = radarV / appV;
+    factor = Math.max(0.75, Math.min(1.3, factor)); // guard against typos
+    state.calibration = factor; savePrefs();
+    updateCalibStatus();
+    if (state.analyzerSpeed || (state.release != null && state.catch != null)) recomputeAnalyzer();
+    toast(`Calibrated: readings adjusted ${(factor >= 1 ? '+' : '') + Math.round((factor - 1) * 100)}%.`);
+  });
+  $('calibReset').addEventListener('click', () => {
+    state.calibration = 1; savePrefs(); $('calibApp').value = ''; $('calibRadar').value = '';
+    updateCalibStatus();
+    if (state.analyzerSpeed || (state.release != null && state.catch != null)) recomputeAnalyzer();
+  });
+}
+
+function updateCalibStatus() {
+  const f = state.calibration || 1;
+  const el = $('calibStatus');
+  if (!el) return;
+  el.textContent = Math.abs(f - 1) < 0.001
+    ? 'Calibration: none (raw measurement).'
+    : `Calibration: ${(f >= 1 ? '+' : '') + Math.round((f - 1) * 100)}% (×${f.toFixed(2)}).`;
 }
 
 // ---------- boot ----------

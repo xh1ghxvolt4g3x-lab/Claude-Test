@@ -131,6 +131,20 @@
         <span>Detection sensitivity<br /><small>Higher = catch fainter/faster balls</small></span>
         <input id="sensitivity" type="range" min="14" max="40" value="26" />
       </label>
+      <label class="row">
+        <span>Coach mode<br /><small>Big number stays on screen and the speed is spoken aloud</small></span>
+        <input id="coachToggle" type="checkbox" />
+      </label>
+      <div class="row calib">
+        <span>Calibrate to a radar gun<br /><small>Enter what the app showed and the radar’s number, then Set</small></span>
+      </div>
+      <div class="calib-controls">
+        <input id="calibApp" type="number" inputmode="decimal" step="0.1" placeholder="app mph" />
+        <input id="calibRadar" type="number" inputmode="decimal" step="0.1" placeholder="radar mph" />
+        <button id="calibApply" class="chip strong">Set</button>
+        <button id="calibReset" class="chip">Reset</button>
+      </div>
+      <div id="calibStatus" class="cam-detail"></div>
       <div id="camDetail" class="cam-detail"></div>
       <div id="appVersion" class="cam-detail"></div>
       <button id="closeSettings" class="btn primary full">Done</button>
