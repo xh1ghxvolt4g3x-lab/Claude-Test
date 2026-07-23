@@ -1,10 +1,11 @@
 import { AGE_GROUPS, DEFAULT_AGE, CAMERA_CONSTRAINTS, distanceForAge, speedFromFlight } from './config.js';
 import { BallTracker, LivePitchDetector } from './tracker.js';
+import { Store } from './store.js';
 
 const $ = (id) => document.getElementById(id);
 const PREFS = 'pitchgun.prefs';
 // Bump on each release so users can confirm (Settings) they're on the latest.
-const APP_VERSION = '2.4 — Coach mode + calibration (2026-07-23)';
+const APP_VERSION = '2.5 — Pitcher history (2026-07-23)';
 
 const state = {
   mode: 'record',
@@ -30,6 +31,7 @@ const state = {
   release: null,
   catch: null,
   analyzerSpeed: null,
+  analyzerLogged: false,
 };
 
 // ---------- prefs ----------
@@ -186,7 +188,62 @@ function onLivePitch(flight) {
   showLiveNumber(speed);
   if (state.coachMode) speakSpeed(speed.mph);
   freezeLiveSnapshot(speed);
+  logCurrentPitch(speed, 'live');
   $('lastBtn').disabled = false;
+}
+
+// ---------- pitchers / history ----------
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+function logCurrentPitch(speed, source) {
+  if (!speed) return;
+  Store.logPitch({ mph: speed.mph, ageId: state.ageId, distanceFt: speed.distanceFt, source });
+}
+function renderPitcherName() {
+  const p = Store.current();
+  $('pitcherName').textContent = p ? p.name : 'Pitcher';
+}
+function openPitchers() {
+  renderPitcherList();
+  renderPitcherStats();
+  $('pitchersSheet').classList.remove('hidden');
+}
+function renderPitcherList() {
+  const box = $('pitcherList'); box.innerHTML = '';
+  const curId = Store.data.currentId;
+  for (const p of Store.list()) {
+    const s = Store.stats(p.id);
+    const item = document.createElement('button');
+    item.className = 'pitcher-item' + (p.id === curId ? ' sel' : '');
+    item.innerHTML = `<span class="pi-name">${escapeHtml(p.name)}</span><span class="pi-sub">${s.count} pitches${s.max ? ' · best ' + s.max.toFixed(0) : ''}</span>`;
+    item.addEventListener('click', () => { Store.select(p.id); renderPitcherName(); renderPitcherList(); renderPitcherStats(); });
+    box.appendChild(item);
+  }
+}
+function renderPitcherStats() {
+  const p = Store.current();
+  const s = Store.stats();
+  const el = $('pitcherStats');
+  if (!s.count) {
+    el.innerHTML = `<div class="spark-empty">No pitches logged for ${escapeHtml(p.name)} yet.<br/>Measure a pitch and it shows up here.</div>`;
+    return;
+  }
+  const bars = s.recent.map((x) => x.mph);
+  const mx = Math.max(...bars), mn = Math.min(...bars);
+  const range = Math.max(1, mx - mn);
+  const spark = bars.map((v) => `<div class="bar" title="${v}" style="height:${20 + Math.round((v - mn) / range * 80)}%"></div>`).join('');
+  el.innerHTML =
+    `<div class="stat-row">
+      <div class="stat-tile"><b>${s.max.toFixed(0)}</b><span>Best</span></div>
+      <div class="stat-tile"><b>${s.avg.toFixed(0)}</b><span>Average</span></div>
+      <div class="stat-tile"><b>${s.count}</b><span>Pitches</span></div>
+    </div>
+    <div class="stat-row">
+      <div class="stat-tile"><b>${s.todayMax ? s.todayMax.toFixed(0) : '–'}</b><span>Today best</span></div>
+      <div class="stat-tile"><b>${s.todayCount}</b><span>Today</span></div>
+    </div>
+    <div class="spark">${spark}</div>`;
 }
 
 function speakSpeed(mph) {
@@ -327,7 +384,7 @@ function openAnalyzer(src, blob) {
   stopLiveLoop();
   const clip = $('clip');
   clip.src = src;
-  state.release = null; state.catch = null; state.analyzerSpeed = null;
+  state.release = null; state.catch = null; state.analyzerSpeed = null; state.analyzerLogged = false;
   $('analyzeSpeed').classList.add('hidden');
   $('analyzer').classList.remove('hidden');
   $('analyzerNote').textContent = 'Loading clip…';
@@ -417,6 +474,7 @@ function recomputeAnalyzer() {
     const dist = distanceForAge(state.ageId);
     const speed = speedFromFlight(dist, state.catch - state.release, state.radarStyle, state.calibration);
     state.analyzerSpeed = speed;
+    state.analyzerLogged = false; // marks changed -> allow logging the new reading
     $('asValue').textContent = speed.mph.toFixed(1);
     $('analyzeSpeed').classList.remove('hidden');
   } else {
@@ -472,6 +530,7 @@ async function saveAnalyzerPhoto() {
   ctx.drawImage(clip, 0, 0, w, h);
   drawSpeedTag(ctx, w, h, state.analyzerSpeed);
   const blob = await canvasToBlob(cv, 'image/jpeg', 0.92);
+  if (!state.analyzerLogged) { logCurrentPitch(state.analyzerSpeed, 'clip'); state.analyzerLogged = true; }
   await saveOrShare(blob, speedFilename(state.analyzerSpeed, 'jpg'), 'Photo');
 }
 
@@ -510,6 +569,7 @@ async function saveAnalyzerClip() {
   });
   const ext = (rec.mimeType || '').includes('mp4') ? 'mp4' : 'webm';
   const blob = new Blob(chunks, { type: rec.mimeType || 'video/mp4' });
+  if (!state.analyzerLogged) { logCurrentPitch(state.analyzerSpeed, 'clip'); state.analyzerLogged = true; }
   $('analyzerNote').textContent = 'Saved.';
   await saveOrShare(blob, speedFilename(state.analyzerSpeed, ext), 'Clip');
 }
@@ -593,6 +653,27 @@ function wire() {
   $('saveClip').addEventListener('click', saveAnalyzerClip);
   $('closeAnalyzer').addEventListener('click', closeAnalyzer);
 
+  // pitchers
+  $('pitcherBtn').addEventListener('click', openPitchers);
+  $('closePitchers').addEventListener('click', () => $('pitchersSheet').classList.add('hidden'));
+  $('addPitcher').addEventListener('click', () => {
+    const name = prompt('New pitcher name?');
+    if (name && name.trim()) { Store.add(name.trim()); renderPitcherName(); renderPitcherList(); renderPitcherStats(); }
+  });
+  $('renamePitcher').addEventListener('click', () => {
+    const p = Store.current(); const name = prompt('Rename pitcher', p.name);
+    if (name && name.trim()) { Store.rename(p.id, name.trim()); renderPitcherName(); renderPitcherList(); }
+  });
+  $('clearPitches').addEventListener('click', () => {
+    const p = Store.current();
+    if (confirm(`Clear all pitches for ${p.name}? This can’t be undone.`)) { Store.clearPitches(p.id); renderPitcherList(); renderPitcherStats(); }
+  });
+  $('deletePitcher').addEventListener('click', () => {
+    const p = Store.current();
+    if (Store.list().length <= 1) { toast('Add another pitcher before deleting this one.'); return; }
+    if (confirm(`Delete ${p.name} and all their pitches?`)) { Store.remove(p.id); renderPitcherName(); renderPitcherList(); renderPitcherStats(); }
+  });
+
   // sheets
   $('settingsBtn').addEventListener('click', () => { updateCalibStatus(); $('settingsSheet').classList.remove('hidden'); });
   $('closeSettings').addEventListener('click', () => $('settingsSheet').classList.add('hidden'));
@@ -642,8 +723,10 @@ function updateCalibStatus() {
 // ---------- boot ----------
 async function boot() {
   loadPrefs();
+  Store.init();
   populateAges();
   wire();
+  renderPitcherName();
   setMode('record');
   $('appVersion').textContent = 'Version ' + APP_VERSION;
   if ('serviceWorker' in navigator) {
