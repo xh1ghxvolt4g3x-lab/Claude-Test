@@ -3,6 +3,8 @@ import { BallTracker, LivePitchDetector } from './tracker.js';
 
 const $ = (id) => document.getElementById(id);
 const PREFS = 'pitchgun.prefs';
+// Bump on each release so users can confirm (Settings) they're on the latest.
+const APP_VERSION = '2.1 — Import picker fix (2026-07-23)';
 
 const state = {
   mode: 'live',
@@ -547,6 +549,7 @@ async function boot() {
   populateAges();
   wire();
   setMode('live');
+  $('appVersion').textContent = 'Version ' + APP_VERSION;
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
     // When a freshly-installed service worker takes control, reload once so the
