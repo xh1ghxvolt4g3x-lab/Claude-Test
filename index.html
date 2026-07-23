@@ -28,10 +28,13 @@
 
     <!-- top bar -->
     <header class="topbar">
-      <label class="age-select">
-        <span class="age-caption">Age</span>
-        <select id="ageSelect" aria-label="Age group / pitching distance"></select>
-      </label>
+      <div class="left-controls">
+        <label class="age-select">
+          <span class="age-caption">Age</span>
+          <select id="ageSelect" aria-label="Age group / pitching distance"></select>
+        </label>
+        <button id="pitcherBtn" class="pill-btn" aria-label="Pitcher">🥎 <span id="pitcherName">Pitcher 1</span> ▾</button>
+      </div>
       <div class="top-right">
         <span id="lightBadge" class="badge light-badge" hidden></span>
         <span id="capBadge" class="badge">starting…</span>
@@ -148,6 +151,22 @@
       <div id="camDetail" class="cam-detail"></div>
       <div id="appVersion" class="cam-detail"></div>
       <button id="closeSettings" class="btn primary full">Done</button>
+    </div>
+  </div>
+
+  <!-- ===================== PITCHERS SHEET ===================== -->
+  <div id="pitchersSheet" class="sheet hidden">
+    <div class="sheet-inner">
+      <h2>Pitchers</h2>
+      <div id="pitcherList" class="pitcher-list"></div>
+      <button id="addPitcher" class="btn full" style="margin:6px 0 14px">+ Add pitcher</button>
+      <div id="pitcherStats" class="pitcher-stats"></div>
+      <div class="analyzer-actions">
+        <button id="renamePitcher" class="btn">Rename</button>
+        <button id="clearPitches" class="btn">Clear pitches</button>
+        <button id="deletePitcher" class="btn ghost">Delete</button>
+      </div>
+      <button id="closePitchers" class="btn primary full">Done</button>
     </div>
   </div>
 
