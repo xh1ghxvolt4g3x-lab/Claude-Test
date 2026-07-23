@@ -5,7 +5,7 @@ import { Store } from './store.js';
 const $ = (id) => document.getElementById(id);
 const PREFS = 'pitchgun.prefs';
 // Bump on each release so users can confirm (Settings) they're on the latest.
-const APP_VERSION = '2.5 — Pitcher history (2026-07-23)';
+const APP_VERSION = '2.6 — Auto-clip pitches (2026-07-23)';
 
 const state = {
   mode: 'record',
@@ -14,8 +14,10 @@ const state = {
   sensitivity: 26,
   showGuide: true,
   coachMode: false,
+  autoclip: false,
   calibration: 1,
   recent: [],          // recent live speeds (mph) for coach display
+  clipBlob: null,      // last auto-captured pitch clip, pending save
   stream: null,
   trackW: 1280,
   trackH: 720,
@@ -44,6 +46,7 @@ function loadPrefs() {
       sensitivity: p.sensitivity ?? 26,
       showGuide: p.showGuide ?? true,
       coachMode: !!p.coachMode,
+      autoclip: !!p.autoclip,
       calibration: p.calibration ?? 1,
     });
   } catch { /* ignore */ }
@@ -52,7 +55,7 @@ function savePrefs() {
   localStorage.setItem(PREFS, JSON.stringify({
     ageId: state.ageId, radarStyle: state.radarStyle,
     sensitivity: state.sensitivity, showGuide: state.showGuide,
-    coachMode: state.coachMode, calibration: state.calibration,
+    coachMode: state.coachMode, autoclip: state.autoclip, calibration: state.calibration,
   }));
 }
 
@@ -91,6 +94,7 @@ async function startCamera() {
       if (adv.length) await track.applyConstraints({ advanced: adv });
     } catch { /* not supported */ }
     startLiveLoop();
+    syncAutoBuffer(); // begin rolling buffer if starting up already in Auto mode
   } catch (err) {
     toast('Camera access needed. Allow the camera in Settings ▸ Safari, then reload.', 6000);
     $('statusLine').textContent = 'Camera unavailable — you can still Import a clip.';
@@ -142,6 +146,68 @@ function startLiveLoop() {
 }
 function stopLiveLoop() { state.liveRunning = false; }
 
+// ---------- auto-clip: rolling video buffer ----------
+// When Auto mode + auto-clip are on, we keep a short self-contained recording
+// running and rotate it every few seconds. A detected pitch finalizes the
+// current segment (which contains the pitch at its end), tags it, and offers it
+// to save. iOS won't let us write to Photos silently, so the user taps "Save".
+const SEG_MS = 6000;
+const _auto = { active: false, rec: null, chunks: [], saveOnStop: false, pendingSpeed: null, timer: null, mime: '' };
+
+function syncAutoBuffer() {
+  const want = state.autoclip && state.mode === 'live' && !!state.stream && !!window.MediaRecorder;
+  if (want && !_auto.active) startAutoBuffer();
+  else if (!want && _auto.active) stopAutoBuffer();
+}
+function startAutoBuffer() {
+  if (!window.MediaRecorder || !state.stream) return;
+  _auto.active = true;
+  _auto.mime = pickMime();
+  startAutoSegment();
+}
+function startAutoSegment() {
+  if (!_auto.active || !state.stream) return;
+  let rec;
+  try { rec = new MediaRecorder(state.stream, _auto.mime ? { mimeType: _auto.mime } : undefined); }
+  catch { _auto.active = false; return; }
+  _auto.rec = rec; _auto.chunks = [];
+  rec.ondataavailable = (e) => { if (e.data && e.data.size) _auto.chunks.push(e.data); };
+  rec.onstop = () => {
+    const blob = new Blob(_auto.chunks, { type: _auto.mime || 'video/mp4' });
+    _auto.chunks = [];
+    const save = _auto.saveOnStop; _auto.saveOnStop = false;
+    const spd = _auto.pendingSpeed; _auto.pendingSpeed = null;
+    if (save && blob.size) onAutoClipReady(blob, spd);
+    if (_auto.active) startAutoSegment(); // keep buffering
+  };
+  try { rec.start(); } catch { _auto.active = false; return; }
+  clearTimeout(_auto.timer);
+  _auto.timer = setTimeout(() => {
+    if (_auto.active && _auto.rec && _auto.rec.state === 'recording') _auto.rec.stop();
+  }, SEG_MS);
+}
+function stopAutoBuffer() {
+  _auto.active = false;
+  clearTimeout(_auto.timer);
+  try { if (_auto.rec && _auto.rec.state === 'recording') { _auto.saveOnStop = false; _auto.rec.stop(); } } catch { /* ignore */ }
+  _auto.rec = null; _auto.chunks = [];
+}
+// ask the buffer to finalize the segment holding the pitch we just detected
+function requestAutoClip(speed) {
+  if (!_auto.active || !_auto.rec || _auto.rec.state !== 'recording') return;
+  _auto.saveOnStop = true; _auto.pendingSpeed = speed;
+  clearTimeout(_auto.timer);
+  try { _auto.rec.stop(); } catch { /* ignore */ }
+}
+function onAutoClipReady(blob, speed) {
+  state.clipBlob = blob;
+  state.clipName = speedFilename(speed || state.lastSpeed || { mph: 0 }, blob.type.includes('mp4') ? 'mp4' : 'webm');
+  const btn = $('liveSaveClip');
+  if (btn) { btn.hidden = false; btn.disabled = false; btn.textContent = 'Save Clip'; }
+  // make sure the result card is up so the Save Clip button is reachable
+  $('liveCard').classList.remove('hidden');
+}
+
 // ---------- lighting quality meter ----------
 // The camera auto-exposes, but we can't force a fast shutter from the web, so in
 // dim light the ball motion-blurs. This samples average scene brightness and
@@ -166,13 +232,14 @@ function sampleLighting(cam, ts) {
 
   const badge = $('lightBadge');
   badge.classList.remove('low', 'warn');
+  // compact to fit the top bar: glyph only, expand wording only for the low case
   if (avg >= 105) {
-    badge.textContent = '☀︎ Good light';
+    badge.textContent = '☀︎'; badge.title = 'Good light';
   } else if (avg >= 65) {
-    badge.textContent = '◐ OK light';
+    badge.textContent = '◐'; badge.title = 'OK light';
     badge.classList.add('warn');
   } else {
-    badge.textContent = '☾ Low light';
+    badge.textContent = '☾ Low'; badge.title = 'Low light — ball may blur';
     badge.classList.add('low');
   }
   badge.hidden = false;
@@ -189,6 +256,7 @@ function onLivePitch(flight) {
   if (state.coachMode) speakSpeed(speed.mph);
   freezeLiveSnapshot(speed);
   logCurrentPitch(speed, 'live');
+  if (state.autoclip && _auto.active) requestAutoClip(speed);
   $('lastBtn').disabled = false;
 }
 
@@ -281,6 +349,16 @@ function freezeLiveSnapshot(speed) {
   try { ctx.drawImage(cam, 0, 0, w, h); } catch { /* frame not ready */ }
   drawSpeedTag(ctx, w, h, speed);
   $('liveCard').dataset.name = speedFilename(speed);
+  // reset any prior clip; a fresh one (if auto-clip is on) arrives shortly
+  state.clipBlob = null;
+  const clipBtn = $('liveSaveClip');
+  if (clipBtn) {
+    if (state.autoclip && _auto.active) {
+      clipBtn.hidden = false; clipBtn.disabled = true; clipBtn.textContent = 'Preparing clip…';
+    } else {
+      clipBtn.hidden = true;
+    }
+  }
   $('liveCard').classList.remove('hidden');
 }
 
@@ -382,6 +460,7 @@ let analyzerBlob = null;
 function openAnalyzer(src, blob) {
   analyzerBlob = blob || null;
   stopLiveLoop();
+  stopAutoBuffer();
   const clip = $('clip');
   clip.src = src;
   state.release = null; state.catch = null; state.analyzerSpeed = null; state.analyzerLogged = false;
@@ -402,6 +481,7 @@ function closeAnalyzer() {
   clip.removeAttribute('src'); clip.load();
   $('analyzer').classList.add('hidden');
   startLiveLoop();
+  syncAutoBuffer();
 }
 
 function sizeOverlay() {
@@ -602,6 +682,7 @@ function setMode(mode) {
     $('liveReadout').classList.add('hidden');
     $('shutter').setAttribute('aria-label', 'Record');
   }
+  syncAutoBuffer(); // start/stop the rolling clip buffer to match the mode
 }
 
 function wire() {
@@ -635,6 +716,10 @@ function wire() {
     const blob = await canvasToBlob(cv, 'image/jpeg', 0.92);
     const name = $('liveCard').dataset.name || 'pitch.jpg';
     await saveOrShare(blob, name, 'Photo');
+  });
+  $('liveSaveClip').addEventListener('click', async () => {
+    if (!state.clipBlob) return;
+    await saveOrShare(state.clipBlob, state.clipName || 'pitch.mp4', 'Clip');
   });
   $('liveDismiss').addEventListener('click', () => $('liveCard').classList.add('hidden'));
 
@@ -691,6 +776,13 @@ function wire() {
   coach.addEventListener('change', (e) => {
     state.coachMode = e.target.checked; savePrefs();
     if (!state.coachMode) $('liveReadout').classList.remove('coach');
+  });
+
+  const autoclip = $('autoclipToggle'); autoclip.checked = state.autoclip;
+  autoclip.addEventListener('change', (e) => {
+    state.autoclip = e.target.checked; savePrefs();
+    if (state.autoclip && state.mode !== 'live') toast('Auto-clip works in Auto ⚡ mode — switch to Auto to use it.');
+    syncAutoBuffer();
   });
 
   $('calibApply').addEventListener('click', () => {

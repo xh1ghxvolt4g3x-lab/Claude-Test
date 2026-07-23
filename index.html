@@ -76,7 +76,8 @@
     <div class="card">
       <canvas id="liveSnap" class="snap-canvas"></canvas>
       <div class="card-actions">
-        <button id="liveSave" class="btn primary">Save Photo</button>
+        <button id="liveSaveClip" class="btn primary" hidden>Save Clip</button>
+        <button id="liveSave" class="btn">Save Photo</button>
         <button id="liveDismiss" class="btn ghost">Dismiss</button>
       </div>
     </div>
@@ -138,6 +139,10 @@
         <span>Coach mode<br /><small>Big number stays on screen and the speed is spoken aloud</small></span>
         <input id="coachToggle" type="checkbox" />
       </label>
+      <label class="row">
+        <span>Auto-clip pitches<br /><small>In Auto mode, offer to save a short clip of each detected pitch</small></span>
+        <input id="autoclipToggle" type="checkbox" />
+      </label>
       <div class="row calib">
         <span>Calibrate to a radar gun<br /><small>Enter what the app showed and the radar’s number, then Set</small></span>
       </div>
@@ -180,7 +185,8 @@
         <li><b>Frame the whole flight</b> — pitcher near one edge, catcher near the other. The full pitching distance must be in view.</li>
         <li>Pick the <b>age group</b> up top so the app knows the distance (10U 35 ft · 12U 40 ft · 14U+ 43 ft).</li>
         <li><b>Record</b> (the default) captures a clip you then scrub frame-by-frame for a precise number. Tap <b>Auto ⚡</b> to turn on hands-free live readings — but hold the phone steady, since camera movement can trigger false readings.</li>
-        <li>Watch the <b>light badge</b> (top right). <b>☾ Low light</b> means the ball will blur — move to brighter light or use a slow-mo Import for a clean reading.</li>
+        <li>Watch the <b>light badge</b> (top right). <b>☾ Low</b> means the ball will blur — move to brighter light or use a slow-mo Import for a clean reading.</li>
+        <li>Turn on <b>Auto-clip</b> (Settings) to have Auto ⚡ mode offer a short saved clip of each pitch — tap <b>Save Clip</b> on the pop-up to put it in Photos.</li>
         <li>For the sharpest timing, record a <b>slow-motion clip in the iPhone Camera app</b>, then <b>Import</b> it here and set the exact release/catch frames.</li>
       </ol>
       <p class="fine">Speed = pitching distance ÷ flight time. The reading is the average speed over the flight; turn on “Radar-style” in Settings to estimate the higher out-of-hand speed a radar gun shows.</p>
