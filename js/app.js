@@ -4,10 +4,10 @@ import { BallTracker, LivePitchDetector } from './tracker.js';
 const $ = (id) => document.getElementById(id);
 const PREFS = 'pitchgun.prefs';
 // Bump on each release so users can confirm (Settings) they're on the latest.
-const APP_VERSION = '2.1 — Import picker fix (2026-07-23)';
+const APP_VERSION = '2.2 — Auto-detect is now opt-in (2026-07-23)';
 
 const state = {
-  mode: 'live',
+  mode: 'record',
   ageId: DEFAULT_AGE,
   radarStyle: false,
   sensitivity: 26,
@@ -471,10 +471,14 @@ function setMode(mode) {
   $('modeRecord').classList.toggle('active', mode === 'record');
   $('framingGuide').classList.toggle('hidden', !state.showGuide);
   if (mode === 'live') {
-    $('statusLine').textContent = 'Live — pitches read automatically';
+    // Auto (live detection) is opt-in. Clear any stale motion history so the
+    // act of switching / moving the phone doesn't fire a false reading.
+    if (state.live) state.live.reset();
+    state.lastSpeed = null;
+    $('statusLine').textContent = 'Auto ⚡ ON — hold the phone steady; speeds read automatically';
     $('shutter').setAttribute('aria-label', 'Capture photo');
   } else {
-    $('statusLine').textContent = 'Record — tap the button, then it analyzes';
+    $('statusLine').textContent = 'Tap ● to record a pitch — then scrub to the exact frames';
     $('liveReadout').classList.add('hidden');
     $('shutter').setAttribute('aria-label', 'Record');
   }
@@ -548,7 +552,7 @@ async function boot() {
   loadPrefs();
   populateAges();
   wire();
-  setMode('live');
+  setMode('record');
   $('appVersion').textContent = 'Version ' + APP_VERSION;
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
