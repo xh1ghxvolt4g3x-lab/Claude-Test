@@ -4,7 +4,7 @@ import { BallTracker, LivePitchDetector } from './tracker.js';
 const $ = (id) => document.getElementById(id);
 const PREFS = 'pitchgun.prefs';
 // Bump on each release so users can confirm (Settings) they're on the latest.
-const APP_VERSION = '2.2 — Auto-detect is now opt-in (2026-07-23)';
+const APP_VERSION = '2.3 — Lighting meter (2026-07-23)';
 
 const state = {
   mode: 'record',
@@ -118,11 +118,12 @@ function startLiveLoop() {
 
   const frame = (now) => {
     if (!state.liveRunning) return;
+    const ts = (typeof now === 'number' ? now : performance.now());
     if (state.mode === 'live' && cam.readyState >= 2) {
-      const t = (typeof now === 'number' ? now : performance.now()) / 1000;
-      const det = state.live.update(cam, state.trackW, state.trackH, t);
+      const det = state.live.update(cam, state.trackW, state.trackH, ts / 1000);
       if (det) $('statusLine').textContent = 'Tracking ball…';
     }
+    sampleLighting(cam, ts); // runs in every mode, throttled internally
     if (useRVFC) cam.requestVideoFrameCallback(frame);
   };
   if (useRVFC) cam.requestVideoFrameCallback(frame);
@@ -132,6 +133,42 @@ function startLiveLoop() {
   }
 }
 function stopLiveLoop() { state.liveRunning = false; }
+
+// ---------- lighting quality meter ----------
+// The camera auto-exposes, but we can't force a fast shutter from the web, so in
+// dim light the ball motion-blurs. This samples average scene brightness and
+// warns the user when conditions will hurt detection. Purely advisory.
+let _lightCanvas, _lightCtx, _lightNextAt = 0;
+function sampleLighting(cam, ts) {
+  if (ts < _lightNextAt || cam.readyState < 2) return;
+  _lightNextAt = ts + 700; // ~1.4x per second is plenty
+  if (!_lightCanvas) {
+    _lightCanvas = document.createElement('canvas');
+    _lightCanvas.width = 32; _lightCanvas.height = 18;
+    _lightCtx = _lightCanvas.getContext('2d', { willReadFrequently: true });
+  }
+  let avg;
+  try {
+    _lightCtx.drawImage(cam, 0, 0, 32, 18);
+    const d = _lightCtx.getImageData(0, 0, 32, 18).data;
+    let sum = 0;
+    for (let i = 0; i < d.length; i += 4) sum += (d[i] * 77 + d[i + 1] * 150 + d[i + 2] * 29) >> 8;
+    avg = sum / (d.length / 4);
+  } catch { return; }
+
+  const badge = $('lightBadge');
+  badge.classList.remove('low', 'warn');
+  if (avg >= 105) {
+    badge.textContent = '☀︎ Good light';
+  } else if (avg >= 65) {
+    badge.textContent = '◐ OK light';
+    badge.classList.add('warn');
+  } else {
+    badge.textContent = '☾ Low light';
+    badge.classList.add('low');
+  }
+  badge.hidden = false;
+}
 
 function onLivePitch(flight) {
   const dist = distanceForAge(state.ageId);
