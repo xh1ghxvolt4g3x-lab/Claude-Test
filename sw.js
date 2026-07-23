@@ -1,6 +1,11 @@
 // Offline app-shell cache so PitchGun opens instantly at the field, even with
-// no signal. Bump CACHE when any shell file changes.
-const CACHE = 'pitchgun-v1';
+// no signal.
+//
+// Update strategy: the HTML/CSS/JS use NETWORK-FIRST so a new version reaches
+// the phone as soon as it's online (the old cache-first approach could pin an
+// out-of-date copy forever). Images use cache-first (they rarely change). Bump
+// CACHE whenever the shell list changes.
+const CACHE = 'pitchgun-v2';
 const SHELL = [
   './',
   './index.html',
@@ -26,16 +31,44 @@ self.addEventListener('activate', (e) => {
   );
 });
 
+async function networkFirst(req) {
+  try {
+    const res = await fetch(req);
+    if (res && res.ok) {
+      const copy = res.clone();
+      caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+    }
+    return res;
+  } catch (err) {
+    const hit = await caches.match(req);
+    if (hit) return hit;
+    if (req.mode === 'navigate') return caches.match('./index.html');
+    throw err;
+  }
+}
+
+async function cacheFirst(req) {
+  const hit = await caches.match(req);
+  if (hit) return hit;
+  const res = await fetch(req);
+  if (res && res.ok) {
+    const copy = res.clone();
+    caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
+  }
+  return res;
+}
+
 self.addEventListener('fetch', (e) => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // never touch camera/other origins
-  e.respondWith(
-    caches.match(req).then((hit) => hit || fetch(req).then((res) => {
-      const copy = res.clone();
-      caches.open(CACHE).then((c) => c.put(req, copy)).catch(() => {});
-      return res;
-    }).catch(() => caches.match('./index.html')))
-  );
+
+  const dest = req.destination;
+  // Always try the network first for the app itself so updates land promptly.
+  if (req.mode === 'navigate' || dest === 'document' || dest === 'script' || dest === 'style' || dest === 'manifest') {
+    e.respondWith(networkFirst(req));
+  } else {
+    e.respondWith(cacheFirst(req));
+  }
 });

@@ -549,6 +549,14 @@ async function boot() {
   setMode('live');
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('sw.js').catch(() => {});
+    // When a freshly-installed service worker takes control, reload once so the
+    // user is never stuck on a stale version of the app.
+    let reloading = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (reloading) return;
+      reloading = true;
+      window.location.reload();
+    });
   }
   await startCamera();
   // first-run help
